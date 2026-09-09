@@ -1,100 +1,13 @@
 use colored::{Color, Colorize};
 use petgraph::{stable_graph::StableUnGraph, visit::Bfs};
-use std::{collections::HashMap, fmt::Display, io::stdin};
+use std::{fmt::Display, io::stdin};
 
 use glam::prelude::*;
 
 fn main() {
     println!("Barricade!");
-    let mut map = Map::new();
-    // let _ = map.try_place_barricade(Team::Red, BCoord::new(0, 0), Orientation::Vertical);
-    // let _ = map.try_place_barricade(Team::Red, BCoord::new(0, 1), Orientation::Vertical);
-    // let _ = map.try_place_barricade(Team::Red, BCoord::new(0, 2), Orientation::Vertical);
-    // let _ = map.try_place_barricade(Team::Blue, BCoord::new(0, 1), Orientation::Horizontal);
-    // let _ = map.try_place_barricade(Team::Blue, BCoord::new(3, 7), Orientation::Vertical);
-    // // let _ = map.try_place_barricade(Team::Blue, BCoord::new(4, 7), Orientation::Vertical);
-    // let _ = map.try_place_barricade(Team::Blue, BCoord::new(3, 6), Orientation::Horizontal);
-
-    // map.move_player(Team::Red, PCoord::new(4, 7));
-    // let _ = map.try_step(Team::Blue, PCoord::new(5, 7));
-
-    let mut turn = 0;
-
-    let mut inventory = HashMap::from([(Team::Red, 10), (Team::Blue, 10)]);
-
-    loop {
-        let current_team = if turn % 2 == 0 { Team::Red } else { Team::Blue };
-
-        println!("{:?}", inventory);
-        println!("{map}");
-
-        if map.blue_player.coord.y == 0 {
-            // blue wins
-            println!("Blue wins!");
-            return;
-        }
-        if map.red_player.coord.y == 8 {
-            // red wins
-            println!("Red wins!");
-            return;
-        }
-
-        println!("{}'s turn", if turn % 2 == 0 { "Red" } else { "Blue" });
-
-        let mut input = String::new();
-        if stdin().read_line(&mut input).is_err() {
-            continue;
-        }
-
-        let input = input.trim();
-        let mut chars = input.chars();
-
-        let Some(cmd) = chars.next() else {
-            continue;
-        };
-        let Some(c1) = chars.next() else {
-            continue;
-        };
-        let Some(c2) = chars.next() else {
-            continue;
-        };
-
-        let x = (c1.to_ascii_lowercase() as i32) - i32::from(b'a');
-        let y = (c2 as i32) - i32::from(b'1');
-        let coord = PCoord::new(x, y);
-
-        let ok = match cmd.to_ascii_lowercase() {
-            'm' => map.try_step(current_team, coord).is_ok(),
-            'v' | 'h' => {
-                let orientation = if cmd.to_ascii_lowercase() == 'v' {
-                    Orientation::Vertical
-                } else {
-                    Orientation::Horizontal
-                };
-
-                if inventory.get(&current_team).is_some_and(|&n| n > 0) {
-                    if map
-                        .try_place_barricade(current_team, coord, orientation)
-                        .is_ok()
-                    {
-                        if let Some(count) = inventory.get_mut(&current_team) {
-                            *count -= 1;
-                        }
-                        true
-                    } else {
-                        false
-                    }
-                } else {
-                    false
-                }
-            }
-            _ => false,
-        };
-
-        if ok {
-            turn += 1;
-        }
-    }
+    let mut game = Game::new();
+    game.run();
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -114,7 +27,16 @@ impl From<Team> for Color {
 
 pub struct Player {
     team: Team,
-    coord: PCoord,
+    inventory: usize, // number of barricades left in inventory
+}
+
+impl Player {
+    fn new(team: Team) -> Self {
+        Self {
+            team,
+            inventory: 10,
+        }
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -126,16 +48,112 @@ pub enum Orientation {
 pub type PCoord = IVec2; // Player grid coord
 pub type BCoord = IVec2; // Barricade grid coord
 
-pub type PGrid = [Option<Team>; 9 * 9];
 pub type BGrid = [Option<Barricade>; 8 * 8];
 
 pub type NavGraph = StableUnGraph<(), (), usize>;
 
-pub struct Map {
-    player_grid: PGrid,
-    barricade_grid: BGrid,
+pub struct Game {
+    map: Map,
     red_player: Player,
     blue_player: Player,
+}
+
+impl Game {
+    fn new() -> Self {
+        let red_player = Player::new(Team::Red);
+        let blue_player = Player::new(Team::Blue);
+
+        Self {
+            map: Map::new(PCoord::new(4, 0), PCoord::new(4, 8)),
+            red_player,
+            blue_player,
+        }
+    }
+
+    fn run(&mut self) {
+        let mut turn = 0;
+
+        loop {
+            println!("Red: {}", self.red_player.inventory);
+            println!("Blue: {}", self.blue_player.inventory);
+            println!("{}", self.map);
+
+            if self.map.blue_coord.y == 0 {
+                // blue wins
+                println!("Blue wins!");
+                return;
+            }
+            if self.map.red_coord.y == 8 {
+                // red wins
+                println!("Red wins!");
+                return;
+            }
+
+            println!("{}'s turn", if turn % 2 == 0 { "Red" } else { "Blue" });
+
+            let mut input = String::new();
+            if stdin().read_line(&mut input).is_err() {
+                continue;
+            }
+
+            let input = input.trim();
+            let mut chars = input.chars();
+
+            let Some(cmd) = chars.next() else {
+                continue;
+            };
+            let Some(c1) = chars.next() else {
+                continue;
+            };
+            let Some(c2) = chars.next() else {
+                continue;
+            };
+
+            let x = (c1.to_ascii_lowercase() as i32) - i32::from(b'a');
+            let y = (c2 as i32) - i32::from(b'1');
+            let coord = PCoord::new(x, y);
+
+            let current_player = if turn % 2 == 0 {
+                &mut self.red_player
+            } else {
+                &mut self.blue_player
+            };
+
+            let ok = match cmd.to_ascii_lowercase() {
+                'm' => self.map.try_step(current_player.team, coord).is_ok(),
+                'v' | 'h' => {
+                    let orientation = if cmd.to_ascii_lowercase() == 'v' {
+                        Orientation::Vertical
+                    } else {
+                        Orientation::Horizontal
+                    };
+
+                    if current_player.inventory > 0
+                        && self
+                            .map
+                            .try_place_barricade(current_player.team, coord, orientation)
+                            .is_ok()
+                    {
+                        current_player.inventory -= 1;
+                        true
+                    } else {
+                        false
+                    }
+                }
+                _ => false,
+            };
+
+            if ok {
+                turn += 1;
+            }
+        }
+    }
+}
+
+pub struct Map {
+    barricade_grid: BGrid,
+    red_coord: PCoord,
+    blue_coord: PCoord,
 }
 
 #[derive(Clone)]
@@ -145,26 +163,15 @@ pub struct Barricade {
 }
 
 impl Map {
-    pub fn new() -> Self {
-        let mut _self = Self {
-            player_grid: [const { None }; 9 * 9],
+    pub fn new(red_coord: PCoord, blue_coord: PCoord) -> Self {
+        Self {
             barricade_grid: [const { None }; 8 * 8],
-            red_player: Player {
-                team: Team::Red,
-                coord: PCoord::new(4, 0),
-            },
-            blue_player: Player {
-                team: Team::Blue,
-                coord: PCoord::new(4, 8),
-            },
-        };
-
-        _self.player_grid[pcoord_to_index(_self.red_player.coord)] = Some(Team::Red);
-        _self.player_grid[pcoord_to_index(_self.blue_player.coord)] = Some(Team::Blue);
-
-        _self
+            red_coord,
+            blue_coord,
+        }
     }
 
+    // TODO: Remove red_coord and blue_coord params, they can be retrieved manually
     pub fn try_place_barricade(
         &mut self,
         team: Team,
@@ -179,8 +186,6 @@ impl Map {
     }
 
     pub fn can_place_barricade(&self, coord: BCoord, orientation: Orientation) -> bool {
-        // TODO: Path checks
-
         if !bcoord_in_bounds(coord) {
             return false;
         }
@@ -237,46 +242,53 @@ impl Map {
 
         let navgraph = get_navgraph(&future_grid);
 
-        let red_can_finish = can_reach_y_level(&navgraph, self.red_player.coord, 8);
-        let blue_can_finish = can_reach_y_level(&navgraph, self.blue_player.coord, 0);
+        let red_can_finish = can_reach_y_level(&navgraph, self.red_coord, 8);
+        let blue_can_finish = can_reach_y_level(&navgraph, self.blue_coord, 0);
 
         return !in_place_occupied && !neighbor_occupied && red_can_finish && blue_can_finish;
     }
 
     pub fn move_player(&mut self, team: Team, coord: PCoord) {
-        let index = {
-            let player = self.get_player(team);
-            pcoord_to_index(player.coord)
-        };
-        self.player_grid[index] = None;
-        self.player_grid[pcoord_to_index(coord)] = Some(team);
-
-        let player = self.get_player_mut(team);
-        player.coord = coord;
+        match team {
+            Team::Red => self.red_coord = coord,
+            Team::Blue => self.blue_coord = coord,
+        }
     }
 
-    pub fn can_step(&self, team: Team, to: PCoord) -> bool {
-        let player = self.get_player(team);
+    pub fn is_occupied(&self, coord: PCoord) -> bool {
+        return !pcoord_in_bounds(coord) || self.red_coord == coord || self.blue_coord == coord;
+    }
 
-        if !pcoord_in_bounds(to) || self.player_grid[pcoord_to_index(to)].is_some() {
+    pub fn get_team_at(&self, coord: PCoord) -> Option<Team> {
+        if self.red_coord == coord {
+            return Some(Team::Red);
+        } else if self.blue_coord == coord {
+            return Some(Team::Blue);
+        }
+        None
+    }
+
+    pub fn can_step(&self, player_team: Team, to: PCoord) -> bool {
+        if self.is_occupied(to) {
             return false;
         }
 
-        let diff = to - player.coord;
+        let coord = self.get_player_coord(player_team);
+
+        let diff = to - coord;
         if diff.y == 0 {
             // horizontal move
             if diff.x.abs() == 1 {
                 // standard move
-                if !is_barricade_between(&self.barricade_grid, player.coord, to) {
+                if !is_barricade_between(&self.barricade_grid, coord, to) {
                     return true;
                 }
             } else if diff.x.abs() == 2 {
                 // jump move
-                let between = player.coord + diff / 2;
-                let index_between = pcoord_to_index(between);
-                if !is_barricade_between(&self.barricade_grid, player.coord, between)
+                let between = coord + diff / 2;
+                if !is_barricade_between(&self.barricade_grid, coord, between)
                     && !is_barricade_between(&self.barricade_grid, between, to)
-                    && self.player_grid[index_between].is_some_and(|team| team != player.team)
+                    && self.is_occupied(between)
                 {
                     return true;
                 }
@@ -285,42 +297,38 @@ impl Map {
             // vertical move
             if diff.y.abs() == 1 {
                 // standard move
-                if !is_barricade_between(&self.barricade_grid, player.coord, to) {
+                if !is_barricade_between(&self.barricade_grid, coord, to) {
                     return true;
                 }
             } else if diff.y.abs() == 2 {
                 // jump move
-                let between = player.coord + diff / 2;
-                let index_between = pcoord_to_index(between);
-                if !is_barricade_between(&self.barricade_grid, player.coord, between)
+                let between = coord + diff / 2;
+                if !is_barricade_between(&self.barricade_grid, coord, between)
                     && !is_barricade_between(&self.barricade_grid, between, to)
-                    && self.player_grid[index_between].is_some_and(|team| team != player.team)
+                    && self.is_occupied(between)
                 {
                     return true;
                 }
             }
         } else if diff.y.abs() == 1 && diff.y.abs() == 1 {
             // diagonal move
-            let vert_first_coord = player.coord + PCoord::new(0, diff.y);
-            let hori_first_coord = player.coord + PCoord::new(diff.x, 0);
+            let vert_first_coord = coord + PCoord::new(0, diff.y);
+            let hori_first_coord = coord + PCoord::new(diff.x, 0);
 
-            let vert_first_index = pcoord_to_index(vert_first_coord);
-            let hori_first_index = pcoord_to_index(hori_first_coord);
-
-            if self.player_grid[vert_first_index].is_some_and(|team| team != player.team)
-                && !is_barricade_between(&self.barricade_grid, player.coord, vert_first_coord)
+            if self.is_occupied(vert_first_coord)
+                && !is_barricade_between(&self.barricade_grid, coord, vert_first_coord)
                 && !is_barricade_between(&self.barricade_grid, vert_first_coord, to)
             {
                 // check if barricade is behind or there is the map edge
-                let behind = player.coord + PCoord::new(0, diff.y * 2);
+                let behind = coord + PCoord::new(0, diff.y * 2);
                 return !pcoord_in_bounds(behind)
                     || is_barricade_between(&self.barricade_grid, vert_first_coord, behind);
-            } else if self.player_grid[hori_first_index].is_some_and(|team| team != player.team)
-                && !is_barricade_between(&self.barricade_grid, player.coord, hori_first_coord)
+            } else if self.is_occupied(hori_first_coord)
+                && !is_barricade_between(&self.barricade_grid, coord, hori_first_coord)
                 && !is_barricade_between(&self.barricade_grid, hori_first_coord, to)
             {
                 // check if barricade is behind or there is the map edge
-                let behind = player.coord + PCoord::new(diff.x * 2, 0);
+                let behind = coord + PCoord::new(diff.x * 2, 0);
                 return !pcoord_in_bounds(behind)
                     || is_barricade_between(&self.barricade_grid, hori_first_coord, behind);
             }
@@ -337,17 +345,10 @@ impl Map {
         Err(())
     }
 
-    fn get_player(&self, team: Team) -> &Player {
+    pub fn get_player_coord(&self, team: Team) -> PCoord {
         match team {
-            Team::Red => &self.red_player,
-            Team::Blue => &self.blue_player,
-        }
-    }
-
-    fn get_player_mut(&mut self, team: Team) -> &mut Player {
-        match team {
-            Team::Red => &mut self.red_player,
-            Team::Blue => &mut self.blue_player,
+            Team::Red => self.red_coord,
+            Team::Blue => self.blue_coord,
         }
     }
 }
@@ -371,8 +372,7 @@ impl Display for Map {
                     // draw cell
                     (0, 0) => {
                         let pcoord = PCoord::new(x / 2, y / 2);
-                        let index = pcoord_to_index(pcoord);
-                        if let Some(team) = &self.player_grid[index] {
+                        if let Some(team) = self.get_team_at(pcoord) {
                             match team {
                                 Team::Red => write!(f, "{}", " ● ".red())?,
                                 Team::Blue => write!(f, "{}", " ● ".blue())?,
