@@ -1,13 +1,18 @@
+pub mod bot;
+
 use colored::{Color, Colorize};
 use petgraph::{stable_graph::StableUnGraph, visit::Bfs};
-use std::{fmt::Display, io::stdin};
+use std::{fmt::Display, io::stdin, thread::sleep, time::Duration};
 
 use glam::prelude::*;
+
+use crate::bot::{Bot, Context, RandomBot};
 
 fn main() {
     println!("Barricade!");
     let mut game = Game::new();
-    game.run();
+    // game.run();
+    game.pve(RandomBot);
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
@@ -148,8 +153,127 @@ impl Game {
             }
         }
     }
+
+    fn pve<B: Bot>(&mut self, mut bot: B) {
+        let mut turn = 0;
+
+        loop {
+            println!("Red: {}", self.red_player.inventory);
+            println!("Blue: {}", self.blue_player.inventory);
+            println!("{}", self.map);
+
+            if self.map.blue_coord.y == 0 {
+                // blue wins
+                println!("Blue wins!");
+                return;
+            }
+            if self.map.red_coord.y == 8 {
+                // red wins
+                println!("Red wins!");
+                return;
+            }
+
+            println!("{}'s turn", if turn % 2 == 0 { "Red" } else { "Blue" });
+
+            let ok = if turn % 2 == 0 {
+                // player's turn
+                let mut input = String::new();
+                if stdin().read_line(&mut input).is_err() {
+                    continue;
+                }
+
+                let input = input.trim();
+                let mut chars = input.chars();
+
+                let Some(cmd) = chars.next() else {
+                    continue;
+                };
+                let Some(c1) = chars.next() else {
+                    continue;
+                };
+                let Some(c2) = chars.next() else {
+                    continue;
+                };
+
+                let x = (c1.to_ascii_lowercase() as i32) - i32::from(b'a');
+                let y = (c2 as i32) - i32::from(b'1');
+                let coord = PCoord::new(x, y);
+
+                let current_player = if turn % 2 == 0 {
+                    &mut self.red_player
+                } else {
+                    &mut self.blue_player
+                };
+
+                match cmd.to_ascii_lowercase() {
+                    'm' => self.map.try_step(current_player.team, coord).is_ok(),
+                    'v' | 'h' => {
+                        let orientation = if cmd.to_ascii_lowercase() == 'v' {
+                            Orientation::Vertical
+                        } else {
+                            Orientation::Horizontal
+                        };
+
+                        if current_player.inventory > 0
+                            && self
+                                .map
+                                .try_place_barricade(current_player.team, coord, orientation)
+                                .is_ok()
+                        {
+                            current_player.inventory -= 1;
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                    _ => false,
+                }
+            } else {
+                // bot's turn
+                let context = Context::new(
+                    self.map.clone(),
+                    self.blue_player.inventory,
+                    self.red_player.inventory,
+                );
+
+                sleep(Duration::from_secs(1));
+
+                let action = bot.get_action(context);
+
+                let current_player = if turn % 2 == 0 {
+                    &mut self.red_player
+                } else {
+                    &mut self.blue_player
+                };
+
+                match action {
+                    bot::Action::Move(coord) => {
+                        self.map.try_step(current_player.team, coord).is_ok()
+                    }
+                    bot::Action::Barricade(coord, orientation) => {
+                        if current_player.inventory > 0
+                            && self
+                                .map
+                                .try_place_barricade(current_player.team, coord, orientation)
+                                .is_ok()
+                        {
+                            current_player.inventory -= 1;
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                }
+            };
+
+            if ok {
+                turn += 1;
+            }
+        }
+    }
 }
 
+#[derive(Clone)]
 pub struct Map {
     barricade_grid: BGrid,
     red_coord: PCoord,
@@ -171,7 +295,6 @@ impl Map {
         }
     }
 
-    // TODO: Remove red_coord and blue_coord params, they can be retrieved manually
     pub fn try_place_barricade(
         &mut self,
         team: Team,
