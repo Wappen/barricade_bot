@@ -8,7 +8,7 @@ pub mod path;
 pub mod types;
 
 use crate::{
-    bot::{EnemyPathMaximizerBot, RandomBot},
+    bot::{Bot, EnemyPathMaximizerBot, RandomBot},
     game::Game,
 };
 
@@ -17,5 +17,12 @@ fn main() {
     let mut game = Game::new();
     // game.run();
     game.pve(EnemyPathMaximizerBot);
+
+    // let mut red = EnemyPathMaximizerBot;
+    // let mut blue = EnemyPathMaximizerBot;
+    // game.play(
+    //     Box::new(|ctx| Some(red.get_action(ctx))),
+    //     Box::new(|ctx| Some(blue.get_action(ctx))),
+    // );
     // game.pvp();
 }

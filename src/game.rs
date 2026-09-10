@@ -4,7 +4,7 @@ use crate::{
     bot::{Bot, Context},
     coord::PCoord,
     game::Action::Move,
-    map::Map,
+    map::{BLUE_FINISH_LINE, Map, RED_FINISH_LINE},
     types::{Orientation, Team},
 };
 
@@ -147,14 +147,32 @@ impl Game {
             println!("{}'s turn", if turn % 2 == 0 { "Red" } else { "Blue" });
             let action_provider = if turn % 2 == 0 { &mut red } else { &mut blue };
 
+            let team = if turn % 2 == 0 { Team::Red } else { Team::Blue };
+            let enemy_team = if turn % 2 == 0 { Team::Blue } else { Team::Red };
+
+            let finish_line = if turn % 2 == 0 {
+                &RED_FINISH_LINE
+            } else {
+                &BLUE_FINISH_LINE
+            };
+
+            let enemy_finish_line = if turn % 2 == 0 {
+                &RED_FINISH_LINE
+            } else {
+                &BLUE_FINISH_LINE
+            };
+
             let context = Context::new(
                 self.map.clone(),
                 self.blue_player.inventory,
                 self.red_player.inventory,
+                team,
+                enemy_team,
+                finish_line,
+                enemy_finish_line,
             );
 
             if let Some(action) = action_provider(context) {
-                let team = if turn % 2 == 0 { Team::Red } else { Team::Blue };
                 let ok = self.execute_action(action, team);
 
                 if ok {
