@@ -1,8 +1,11 @@
+use std::{thread::sleep, time::Duration};
+
 use rand::RngExt;
 
 use crate::{
     bot::Action::Move,
     coord::PCoord,
+    game::Action,
     map::Map,
     path::{self, print_path},
     types::{Orientation, Team},
@@ -24,11 +27,6 @@ impl Context {
     }
 }
 
-pub enum Action {
-    Move(PCoord),
-    Barricade(PCoord, Orientation),
-}
-
 pub trait Bot {
     fn get_action(&mut self, context: Context) -> Action;
 }
@@ -37,6 +35,7 @@ pub struct RandomBot;
 
 impl Bot for RandomBot {
     fn get_action(&mut self, context: Context) -> Action {
+        sleep(Duration::from_secs_f32(0.5));
         loop {
             let ori = rand::rng().random_bool(0.5);
             let sgn = rand::rng().random_bool(0.5);

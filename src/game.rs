@@ -1,11 +1,49 @@
-use std::{io::stdin, thread::sleep, time::Duration};
+use std::io::stdin;
 
 use crate::{
-    bot::{Action, Bot, Context},
+    bot::{Bot, Context},
     coord::PCoord,
+    game::Action::Move,
     map::Map,
     types::{Orientation, Team},
 };
+
+pub enum Action {
+    Move(PCoord),
+    Barricade(PCoord, Orientation),
+}
+
+impl Action {
+    pub fn parse(input: impl AsRef<str>) -> Option<Action> {
+        let trimmed_input = input.as_ref().trim().to_ascii_lowercase();
+        let mut chars = trimmed_input.chars();
+
+        let c1 = chars.next()?;
+        let c2 = chars.next()?;
+
+        if let Some(c3) = chars.next() {
+            // 3 chars => place barricade
+            let x = (c2.to_ascii_lowercase() as i32) - i32::from(b'a');
+            let y = (c3 as i32) - i32::from(b'1');
+            let coord = PCoord::new(x, y);
+
+            let orientation = match c1 {
+                'v' => Some(Orientation::Vertical),
+                'h' => Some(Orientation::Horizontal),
+                _ => None,
+            }?;
+
+            return Some(Action::Barricade(coord, orientation));
+        } else {
+            // 2 chars => move
+            let x = (c1.to_ascii_lowercase() as i32) - i32::from(b'a');
+            let y = (c2 as i32) - i32::from(b'1');
+            let coord = PCoord::new(x, y);
+
+            return Some(Move(coord));
+        }
+    }
+}
 
 pub struct Player {
     team: Team,
@@ -39,90 +77,55 @@ impl Game {
         }
     }
 
-    pub fn run(&mut self) {
-        let mut turn = 0;
+    fn read_action_from_stdin() -> Option<Action> {
+        let mut input = String::new();
+        stdin().read_line(&mut input).ok()?;
+        Action::parse(input)
+    }
 
-        loop {
-            println!("Red: {}", self.red_player.inventory);
-            println!("Blue: {}", self.blue_player.inventory);
-            println!("{}", self.map);
+    fn execute_action(&mut self, action: Action, team: Team) -> bool {
+        let player = match team {
+            Team::Red => &mut self.red_player,
+            Team::Blue => &mut self.blue_player,
+        };
 
-            if self.map.blue_coord.y == 0 {
-                // blue wins
-                println!("Blue wins!");
-                return;
-            }
-            if self.map.red_coord.y == 8 {
-                // red wins
-                println!("Red wins!");
-                return;
-            }
-
-            println!("{}'s turn", if turn % 2 == 0 { "Red" } else { "Blue" });
-
-            let mut input = String::new();
-            if stdin().read_line(&mut input).is_err() {
-                continue;
-            }
-
-            let input = input.trim();
-            let mut chars = input.chars();
-
-            let Some(cmd) = chars.next() else {
-                continue;
-            };
-            let Some(c1) = chars.next() else {
-                continue;
-            };
-            let Some(c2) = chars.next() else {
-                continue;
-            };
-
-            let x = (c1.to_ascii_lowercase() as i32) - i32::from(b'a');
-            let y = (c2 as i32) - i32::from(b'1');
-            let coord = PCoord::new(x, y);
-
-            let current_player = if turn % 2 == 0 {
-                &mut self.red_player
-            } else {
-                &mut self.blue_player
-            };
-
-            let ok = match cmd.to_ascii_lowercase() {
-                'm' => self.map.try_step(current_player.team, coord).is_ok(),
-                'v' | 'h' => {
-                    let orientation = if cmd.to_ascii_lowercase() == 'v' {
-                        Orientation::Vertical
-                    } else {
-                        Orientation::Horizontal
-                    };
-
-                    if current_player.inventory > 0
-                        && self
-                            .map
-                            .try_place_barricade(
-                                current_player.team,
-                                coord.to_bcoord(),
-                                orientation,
-                            )
-                            .is_ok()
-                    {
-                        current_player.inventory -= 1;
-                        true
-                    } else {
-                        false
-                    }
+        match action {
+            Action::Move(coord) => self.map.try_step(player.team, coord).is_ok(),
+            Action::Barricade(coord, orientation) => {
+                if player.inventory > 0
+                    && self
+                        .map
+                        .try_place_barricade(player.team, coord.to_bcoord(), orientation)
+                        .is_ok()
+                {
+                    player.inventory -= 1;
+                    true
+                } else {
+                    false
                 }
-                _ => false,
-            };
-
-            if ok {
-                turn += 1;
             }
         }
     }
 
-    pub fn pve<B: Bot>(&mut self, mut bot: B) {
+    pub fn pvp(&mut self) {
+        self.play(
+            Box::new(|_| Self::read_action_from_stdin()),
+            Box::new(|_| Self::read_action_from_stdin()),
+        );
+    }
+
+    pub fn pve(&mut self, mut bot: impl Bot) {
+        self.play(
+            Box::new(|_| Self::read_action_from_stdin()),
+            Box::new(move |ctx| Some(bot.get_action(ctx))),
+        );
+    }
+
+    pub fn play<'a>(
+        &mut self,
+        mut red: Box<dyn FnMut(Context) -> Option<Action> + 'a>,
+        mut blue: Box<dyn FnMut(Context) -> Option<Action> + 'a>,
+    ) {
         let mut turn = 0;
 
         loop {
@@ -142,106 +145,21 @@ impl Game {
             }
 
             println!("{}'s turn", if turn % 2 == 0 { "Red" } else { "Blue" });
+            let action_provider = if turn % 2 == 0 { &mut red } else { &mut blue };
 
-            let ok = if turn % 2 == 0 {
-                // player's turn
-                let mut input = String::new();
-                if stdin().read_line(&mut input).is_err() {
-                    continue;
+            let context = Context::new(
+                self.map.clone(),
+                self.blue_player.inventory,
+                self.red_player.inventory,
+            );
+
+            if let Some(action) = action_provider(context) {
+                let team = if turn % 2 == 0 { Team::Red } else { Team::Blue };
+                let ok = self.execute_action(action, team);
+
+                if ok {
+                    turn += 1;
                 }
-
-                let input = input.trim();
-                let mut chars = input.chars();
-
-                let Some(cmd) = chars.next() else {
-                    continue;
-                };
-                let Some(c1) = chars.next() else {
-                    continue;
-                };
-                let Some(c2) = chars.next() else {
-                    continue;
-                };
-
-                let x = (c1.to_ascii_lowercase() as i32) - i32::from(b'a');
-                let y = (c2 as i32) - i32::from(b'1');
-                let coord = PCoord::new(x, y);
-
-                let current_player = if turn % 2 == 0 {
-                    &mut self.red_player
-                } else {
-                    &mut self.blue_player
-                };
-
-                match cmd.to_ascii_lowercase() {
-                    'm' => self.map.try_step(current_player.team, coord).is_ok(),
-                    'v' | 'h' => {
-                        let orientation = if cmd.to_ascii_lowercase() == 'v' {
-                            Orientation::Vertical
-                        } else {
-                            Orientation::Horizontal
-                        };
-
-                        if current_player.inventory > 0
-                            && self
-                                .map
-                                .try_place_barricade(
-                                    current_player.team,
-                                    coord.to_bcoord(),
-                                    orientation,
-                                )
-                                .is_ok()
-                        {
-                            current_player.inventory -= 1;
-                            true
-                        } else {
-                            false
-                        }
-                    }
-                    _ => false,
-                }
-            } else {
-                // bot's turn
-                let context = Context::new(
-                    self.map.clone(),
-                    self.blue_player.inventory,
-                    self.red_player.inventory,
-                );
-
-                sleep(Duration::from_secs(1));
-
-                let action = bot.get_action(context);
-
-                let current_player = if turn % 2 == 0 {
-                    &mut self.red_player
-                } else {
-                    &mut self.blue_player
-                };
-
-                match action {
-                    Action::Move(coord) => self.map.try_step(current_player.team, coord).is_ok(),
-                    Action::Barricade(coord, orientation) => {
-                        if current_player.inventory > 0
-                            && self
-                                .map
-                                .try_place_barricade(
-                                    current_player.team,
-                                    coord.to_bcoord(),
-                                    orientation,
-                                )
-                                .is_ok()
-                        {
-                            current_player.inventory -= 1;
-                            true
-                        } else {
-                            false
-                        }
-                    }
-                }
-            };
-
-            if ok {
-                turn += 1;
             }
         }
     }
