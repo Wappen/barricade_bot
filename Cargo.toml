@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 colored = "3.1.1"
+derive_more = { version = "2.1.1", features = ["add", "mul"] }
 glam = "0.33.3"
 petgraph = "0.8.3"
 rand = "0.10.2"

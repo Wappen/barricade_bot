@@ -3,7 +3,15 @@ pub mod path;
 
 use colored::{Color, Colorize};
 use petgraph::{stable_graph::StableUnGraph, visit::Bfs};
-use std::{fmt::Display, io::stdin, thread::sleep, time::Duration};
+use std::{
+    fmt::Display,
+    io::stdin,
+    ops::{Deref, DerefMut},
+    thread::sleep,
+    time::Duration,
+};
+
+use derive_more::{Add, Div, Mul, Sub};
 
 use glam::prelude::*;
 
@@ -51,12 +59,222 @@ pub enum Orientation {
     Vertical,
 }
 
-pub type PCoord = IVec2; // Player grid coord
-pub type BCoord = IVec2; // Barricade grid coord
+#[derive(Debug, Clone, Copy, Add, Sub, Mul, Div, PartialEq, Eq, Hash)]
+pub struct PCoord(IVec2);
 
-pub type BGrid = [Option<Barricade>; 8 * 8];
+impl PCoord {
+    pub fn new(x: i32, y: i32) -> Self {
+        Self(IVec2 { x, y })
+    }
 
-pub type NavGraph = StableUnGraph<(), (), usize>;
+    pub fn from_index(index: usize) -> Self {
+        PCoord::new((index % 9) as _, (index / 9) as _)
+    }
+
+    pub fn to_index(&self) -> usize {
+        if !self.is_in_bounds() {
+            return usize::MAX;
+        }
+
+        (self.0.x + self.0.y * 9) as _
+    }
+
+    pub fn to_bcoord(&self) -> BCoord {
+        BCoord::new(self.0.x, self.0.y)
+    }
+
+    pub fn is_in_bounds(&self) -> bool {
+        self.0.x >= 0 && self.0.x < 9 && self.0.y >= 0 && self.0.y < 9
+    }
+}
+
+impl DerefMut for PCoord {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl Deref for PCoord {
+    type Target = IVec2;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+#[derive(Debug, Clone, Copy, Add, Sub, Mul, Div, PartialEq, Eq, Hash)]
+pub struct BCoord(IVec2);
+
+impl BCoord {
+    pub fn new(x: i32, y: i32) -> Self {
+        Self(IVec2 { x, y })
+    }
+
+    pub fn from_index(index: usize) -> Self {
+        BCoord::new((index % 8) as _, (index / 8) as _)
+    }
+
+    pub fn to_index(&self) -> usize {
+        if !self.is_in_bounds() {
+            return usize::MAX;
+        }
+
+        (self.0.x + self.0.y * 8) as _
+    }
+
+    pub fn to_pcoord(&self) -> PCoord {
+        PCoord::new(self.0.x, self.0.y)
+    }
+
+    pub fn is_in_bounds(&self) -> bool {
+        self.0.x >= 0 && self.0.x < 8 && self.0.y >= 0 && self.0.y < 8
+    }
+}
+
+impl DerefMut for BCoord {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl Deref for BCoord {
+    type Target = IVec2;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+type BGrid = [Option<Barricade>; 8 * 8];
+
+#[derive(Debug, Clone)]
+pub struct BarricadeGrid(BGrid);
+
+impl BarricadeGrid {
+    pub fn new() -> Self {
+        Self([const { None }; 8 * 8])
+    }
+
+    pub fn get_navgraph(&self) -> NavigationGraph {
+        let mut edges = Vec::new();
+
+        for y in 0..9 {
+            for x in 0..9 {
+                let coord = PCoord::new(x, y);
+                let right = PCoord::new(x + 1, y);
+                let below = PCoord::new(x, y + 1);
+
+                let coord_index = coord.to_index();
+                let right_index = right.to_index();
+                let below_index = below.to_index();
+
+                if right.is_in_bounds() && !self.is_barricade_between(coord, right) {
+                    edges.push((coord_index, right_index));
+                }
+                if below.is_in_bounds() && !self.is_barricade_between(coord, below) {
+                    edges.push((coord_index, below_index));
+                }
+            }
+        }
+
+        NavGraph::from_edges(edges).into()
+    }
+
+    pub fn is_barricade_between(&self, a: PCoord, b: PCoord) -> bool {
+        let diff = b - a;
+        if diff.x.abs() == 1 && diff.y == 0 {
+            // horizontal move
+            let bcoord_above = BCoord::new(a.x.min(b.x), a.y - 1);
+            let bcoord_below = BCoord::new(a.x.min(b.x), a.y);
+
+            let index_above = bcoord_above.to_index();
+            let index_below = bcoord_below.to_index();
+
+            return self.0.get(index_above).is_some_and(|inner| {
+                inner
+                    .as_ref()
+                    .is_some_and(|barricade| barricade.orientation == Orientation::Vertical)
+            }) | self.0.get(index_below).is_some_and(|inner| {
+                inner
+                    .as_ref()
+                    .is_some_and(|barricade| barricade.orientation == Orientation::Vertical)
+            });
+        } else if diff.x == 0 && diff.y.abs() == 1 {
+            // vertical move
+            let bcoord_left = BCoord::new(a.x - 1, a.y.min(b.y));
+            let bcoord_right = BCoord::new(a.x, a.y.min(b.y));
+
+            let index_left = bcoord_left.to_index();
+            let index_right = bcoord_right.to_index();
+
+            return self.0.get(index_left).is_some_and(|inner| {
+                inner
+                    .as_ref()
+                    .is_some_and(|barricade| barricade.orientation == Orientation::Horizontal)
+            }) | self.0.get(index_right).is_some_and(|inner| {
+                inner
+                    .as_ref()
+                    .is_some_and(|barricade| barricade.orientation == Orientation::Horizontal)
+            });
+        } else {
+            // illegal move
+            return false;
+        }
+    }
+}
+
+impl DerefMut for BarricadeGrid {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl Deref for BarricadeGrid {
+    type Target = BGrid;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+type NavGraph = StableUnGraph<(), (), usize>;
+
+pub struct NavigationGraph(NavGraph);
+
+impl NavigationGraph {
+    pub fn can_reach_y_level(&self, from: PCoord, y: i32) -> bool {
+        let mut bfs = Bfs::new(&self.0, from.to_index().into());
+
+        while let Some(node) = bfs.next(&self.0) {
+            let coord = PCoord::from_index(node.index());
+
+            if coord.y == y {
+                return true;
+            }
+        }
+        false
+    }
+}
+
+impl From<NavGraph> for NavigationGraph {
+    fn from(navgraph: NavGraph) -> Self {
+        NavigationGraph(navgraph)
+    }
+}
+
+impl DerefMut for NavigationGraph {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+
+impl Deref for NavigationGraph {
+    type Target = NavGraph;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
 
 pub struct Game {
     map: Map,
@@ -137,7 +355,11 @@ impl Game {
                     if current_player.inventory > 0
                         && self
                             .map
-                            .try_place_barricade(current_player.team, coord, orientation)
+                            .try_place_barricade(
+                                current_player.team,
+                                coord.to_bcoord(),
+                                orientation,
+                            )
                             .is_ok()
                     {
                         current_player.inventory -= 1;
@@ -218,7 +440,11 @@ impl Game {
                         if current_player.inventory > 0
                             && self
                                 .map
-                                .try_place_barricade(current_player.team, coord, orientation)
+                                .try_place_barricade(
+                                    current_player.team,
+                                    coord.to_bcoord(),
+                                    orientation,
+                                )
                                 .is_ok()
                         {
                             current_player.inventory -= 1;
@@ -255,7 +481,11 @@ impl Game {
                         if current_player.inventory > 0
                             && self
                                 .map
-                                .try_place_barricade(current_player.team, coord, orientation)
+                                .try_place_barricade(
+                                    current_player.team,
+                                    coord.to_bcoord(),
+                                    orientation,
+                                )
                                 .is_ok()
                         {
                             current_player.inventory -= 1;
@@ -274,14 +504,14 @@ impl Game {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Map {
-    barricade_grid: BGrid,
+    barricade_grid: BarricadeGrid,
     red_coord: PCoord,
     blue_coord: PCoord,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub struct Barricade {
     team: Team,
     orientation: Orientation,
@@ -290,7 +520,7 @@ pub struct Barricade {
 impl Map {
     pub fn new(red_coord: PCoord, blue_coord: PCoord) -> Self {
         Self {
-            barricade_grid: [const { None }; 8 * 8],
+            barricade_grid: BarricadeGrid::new(),
             red_coord,
             blue_coord,
         }
@@ -303,18 +533,18 @@ impl Map {
         orientation: Orientation,
     ) -> Result<(), ()> {
         if self.can_place_barricade(coord, orientation) {
-            self.barricade_grid[bcoord_to_index(coord)] = Some(Barricade { team, orientation });
+            self.barricade_grid[coord.to_index()] = Some(Barricade { team, orientation });
             return Ok(());
         }
         Err(())
     }
 
     pub fn can_place_barricade(&self, coord: BCoord, orientation: Orientation) -> bool {
-        if !bcoord_in_bounds(coord) {
+        if !coord.is_in_bounds() {
             return false;
         }
 
-        let index = bcoord_to_index(coord);
+        let index = coord.to_index();
 
         let in_place_occupied = self
             .barricade_grid
@@ -326,8 +556,8 @@ impl Map {
                 let left_coord = BCoord::new(coord.x - 1, coord.y);
                 let right_coord = BCoord::new(coord.x + 1, coord.y);
 
-                let left_index = bcoord_to_index(left_coord);
-                let right_index = bcoord_to_index(right_coord);
+                let left_index = left_coord.to_index();
+                let right_index = right_coord.to_index();
 
                 self.barricade_grid.get(left_index).is_some_and(|inner| {
                     inner
@@ -343,8 +573,8 @@ impl Map {
                 let above_coord = BCoord::new(coord.x, coord.y - 1);
                 let below_coord = BCoord::new(coord.x, coord.y + 1);
 
-                let above_index = bcoord_to_index(above_coord);
-                let below_index = bcoord_to_index(below_coord);
+                let above_index = above_coord.to_index();
+                let below_index = below_coord.to_index();
 
                 self.barricade_grid.get(above_index).is_some_and(|inner| {
                     inner
@@ -364,10 +594,10 @@ impl Map {
             orientation,
         });
 
-        let navgraph = get_navgraph(&future_grid);
+        let navgraph = future_grid.get_navgraph();
 
-        let red_can_finish = can_reach_y_level(&navgraph, self.red_coord, 8);
-        let blue_can_finish = can_reach_y_level(&navgraph, self.blue_coord, 0);
+        let red_can_finish = navgraph.can_reach_y_level(self.red_coord, 8);
+        let blue_can_finish = navgraph.can_reach_y_level(self.blue_coord, 0);
 
         return !in_place_occupied && !neighbor_occupied && red_can_finish && blue_can_finish;
     }
@@ -380,7 +610,7 @@ impl Map {
     }
 
     pub fn is_occupied(&self, coord: PCoord) -> bool {
-        return !pcoord_in_bounds(coord) || self.red_coord == coord || self.blue_coord == coord;
+        return !coord.is_in_bounds() || self.red_coord == coord || self.blue_coord == coord;
     }
 
     pub fn get_team_at(&self, coord: PCoord) -> Option<Team> {
@@ -404,14 +634,14 @@ impl Map {
             // horizontal move
             if diff.x.abs() == 1 {
                 // standard move
-                if !is_barricade_between(&self.barricade_grid, coord, to) {
+                if !self.barricade_grid.is_barricade_between(coord, to) {
                     return true;
                 }
             } else if diff.x.abs() == 2 {
                 // jump move
                 let between = coord + diff / 2;
-                if !is_barricade_between(&self.barricade_grid, coord, between)
-                    && !is_barricade_between(&self.barricade_grid, between, to)
+                if !self.barricade_grid.is_barricade_between(coord, between)
+                    && !self.barricade_grid.is_barricade_between(between, to)
                     && self.is_occupied(between)
                 {
                     return true;
@@ -421,40 +651,52 @@ impl Map {
             // vertical move
             if diff.y.abs() == 1 {
                 // standard move
-                if !is_barricade_between(&self.barricade_grid, coord, to) {
+                if !self.barricade_grid.is_barricade_between(coord, to) {
                     return true;
                 }
             } else if diff.y.abs() == 2 {
                 // jump move
                 let between = coord + diff / 2;
-                if !is_barricade_between(&self.barricade_grid, coord, between)
-                    && !is_barricade_between(&self.barricade_grid, between, to)
+                if !self.barricade_grid.is_barricade_between(coord, between)
+                    && !self.barricade_grid.is_barricade_between(between, to)
                     && self.is_occupied(between)
                 {
                     return true;
                 }
             }
-        } else if diff.y.abs() == 1 && diff.y.abs() == 1 {
+        } else if diff.y.abs() == 1 && diff.x.abs() == 1 {
             // diagonal move
             let vert_first_coord = coord + PCoord::new(0, diff.y);
             let hori_first_coord = coord + PCoord::new(diff.x, 0);
 
             if self.is_occupied(vert_first_coord)
-                && !is_barricade_between(&self.barricade_grid, coord, vert_first_coord)
-                && !is_barricade_between(&self.barricade_grid, vert_first_coord, to)
+                && !self
+                    .barricade_grid
+                    .is_barricade_between(coord, vert_first_coord)
+                && !self
+                    .barricade_grid
+                    .is_barricade_between(vert_first_coord, to)
             {
                 // check if barricade is behind or there is the map edge
                 let behind = coord + PCoord::new(0, diff.y * 2);
-                return !pcoord_in_bounds(behind)
-                    || is_barricade_between(&self.barricade_grid, vert_first_coord, behind);
+                return !behind.is_in_bounds()
+                    || self
+                        .barricade_grid
+                        .is_barricade_between(vert_first_coord, behind);
             } else if self.is_occupied(hori_first_coord)
-                && !is_barricade_between(&self.barricade_grid, coord, hori_first_coord)
-                && !is_barricade_between(&self.barricade_grid, hori_first_coord, to)
+                && !self
+                    .barricade_grid
+                    .is_barricade_between(coord, hori_first_coord)
+                && !self
+                    .barricade_grid
+                    .is_barricade_between(hori_first_coord, to)
             {
                 // check if barricade is behind or there is the map edge
                 let behind = coord + PCoord::new(diff.x * 2, 0);
-                return !pcoord_in_bounds(behind)
-                    || is_barricade_between(&self.barricade_grid, hori_first_coord, behind);
+                return !behind.is_in_bounds()
+                    || self
+                        .barricade_grid
+                        .is_barricade_between(hori_first_coord, behind);
             }
         }
 
@@ -519,8 +761,8 @@ impl Display for Map {
 
                         let bcoord_above = BCoord::new((x - 1) / 2, (y - 2) / 2);
                         let bcoord_below = BCoord::new((x - 1) / 2, y / 2);
-                        let index_above = bcoord_to_index(bcoord_above);
-                        let index_below = bcoord_to_index(bcoord_below);
+                        let index_above = bcoord_above.to_index();
+                        let index_below = bcoord_below.to_index();
 
                         let mut has_barricade = None;
 
@@ -551,8 +793,8 @@ impl Display for Map {
 
                         let bcoord_left = BCoord::new((x - 2) / 2, (y - 1) / 2);
                         let bcoord_right = BCoord::new(x / 2, (y - 1) / 2);
-                        let index_left = bcoord_to_index(bcoord_left);
-                        let index_right = bcoord_to_index(bcoord_right);
+                        let index_left = bcoord_left.to_index();
+                        let index_right = bcoord_right.to_index();
 
                         let mut has_barricade = None;
 
@@ -579,7 +821,7 @@ impl Display for Map {
                     // draw cross border
                     (1, 1) => {
                         let bcoord = BCoord::new((x - 1) / 2, (y - 1) / 2);
-                        let index = bcoord_to_index(bcoord);
+                        let index = bcoord.to_index();
 
                         if let Some(barricade) = &self.barricade_grid[index] {
                             match barricade.orientation {
@@ -629,116 +871,4 @@ impl Display for Map {
 
         Ok(())
     }
-}
-
-fn can_reach_y_level(graph: &NavGraph, from: PCoord, y: i32) -> bool {
-    let mut bfs = Bfs::new(graph, pcoord_to_index(from).into());
-
-    while let Some(node) = bfs.next(graph) {
-        let coord = index_to_pcoord(node.index());
-
-        if coord.y == y {
-            return true;
-        }
-    }
-    false
-}
-
-fn get_navgraph(grid: &BGrid) -> NavGraph {
-    let mut edges = Vec::new();
-
-    for y in 0..9 {
-        for x in 0..9 {
-            let coord = PCoord::new(x, y);
-            let right = PCoord::new(x + 1, y);
-            let below = PCoord::new(x, y + 1);
-
-            let coord_index = pcoord_to_index(coord);
-            let right_index = pcoord_to_index(right);
-            let below_index = pcoord_to_index(below);
-
-            if pcoord_in_bounds(right) && !is_barricade_between(grid, coord, right) {
-                edges.push((coord_index, right_index));
-            }
-            if pcoord_in_bounds(below) && !is_barricade_between(grid, coord, below) {
-                edges.push((coord_index, below_index));
-            }
-        }
-    }
-
-    NavGraph::from_edges(edges)
-}
-
-fn is_barricade_between(grid: &BGrid, a: PCoord, b: PCoord) -> bool {
-    let diff = b - a;
-    if diff.x.abs() == 1 && diff.y == 0 {
-        // horizontal move
-        let bcoord_above = BCoord::new(a.x.min(b.x), a.y - 1);
-        let bcoord_below = BCoord::new(a.x.min(b.x), a.y);
-
-        let index_above = bcoord_to_index(bcoord_above);
-        let index_below = bcoord_to_index(bcoord_below);
-
-        return grid.get(index_above).is_some_and(|inner| {
-            inner
-                .as_ref()
-                .is_some_and(|barricade| barricade.orientation == Orientation::Vertical)
-        }) | grid.get(index_below).is_some_and(|inner| {
-            inner
-                .as_ref()
-                .is_some_and(|barricade| barricade.orientation == Orientation::Vertical)
-        });
-    } else if diff.x == 0 && diff.y.abs() == 1 {
-        // vertical move
-        let bcoord_left = BCoord::new(a.x - 1, a.y.min(b.y));
-        let bcoord_right = BCoord::new(a.x, a.y.min(b.y));
-
-        let index_left = bcoord_to_index(bcoord_left);
-        let index_right = bcoord_to_index(bcoord_right);
-
-        return grid.get(index_left).is_some_and(|inner| {
-            inner
-                .as_ref()
-                .is_some_and(|barricade| barricade.orientation == Orientation::Horizontal)
-        }) | grid.get(index_right).is_some_and(|inner| {
-            inner
-                .as_ref()
-                .is_some_and(|barricade| barricade.orientation == Orientation::Horizontal)
-        });
-    } else {
-        // illegal move
-        return false;
-    }
-}
-
-fn bcoord_to_index(coord: BCoord) -> usize {
-    if !bcoord_in_bounds(coord) {
-        return usize::MAX;
-    }
-
-    return (coord.x + coord.y * 8) as _;
-}
-
-fn pcoord_to_index(coord: PCoord) -> usize {
-    if !pcoord_in_bounds(coord) {
-        return usize::MAX;
-    }
-
-    return (coord.x + coord.y * 9) as _;
-}
-
-fn index_to_pcoord(index: usize) -> PCoord {
-    return PCoord::new((index % 9) as _, (index / 9) as _);
-}
-
-fn index_to_bcoord(index: usize) -> PCoord {
-    return BCoord::new((index % 8) as _, (index / 8) as _);
-}
-
-fn bcoord_in_bounds(coord: BCoord) -> bool {
-    coord.x >= 0 && coord.x < 8 && coord.y >= 0 && coord.y < 8
-}
-
-fn pcoord_in_bounds(coord: PCoord) -> bool {
-    coord.x >= 0 && coord.x < 9 && coord.y >= 0 && coord.y < 9
 }

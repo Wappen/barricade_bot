@@ -1,10 +1,7 @@
 use petgraph::graph::NodeIndex;
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::{
-    Map, NavGraph, Orientation, PCoord, get_navgraph, index_to_bcoord, index_to_pcoord,
-    pcoord_to_index,
-};
+use crate::{BCoord, Map, NavGraph, Orientation, PCoord};
 
 pub type Path = Vec<PCoord>;
 
@@ -16,16 +13,16 @@ pub fn find_paths(map: &Map, start: PCoord, targets: &Vec<PCoord>) -> Vec<Path> 
         .filter_map(|(index, option)| {
             option
                 .as_ref()
-                .map(|barricade| (index_to_bcoord(index), barricade.orientation))
+                .map(|barricade| (BCoord::from_index(index).to_pcoord(), barricade.orientation))
         })
         .collect();
 
     println!("rays: {:?}", &rays);
 
-    let graph = get_navgraph(&map.barricade_grid);
+    let graph = map.barricade_grid.get_navgraph();
     let start_nodes = targets
         .iter()
-        .map(|target| NodeIndex::new(pcoord_to_index(*target)))
+        .map(|target| NodeIndex::new(target.to_index()))
         .collect();
 
     return reverse_bfs_iterative(&graph, &rays, start, start_nodes);
@@ -49,7 +46,7 @@ fn reverse_bfs_iterative(
     start_nodes: Vec<NodeIndex<usize>>,
 ) -> Vec<Path> {
     let mut queue = VecDeque::new();
-    let finish_index = pcoord_to_index(finish);
+    let finish_index = finish.to_index();
 
     // Initialize queue with target nodes (e.g., winning row)
     for node in start_nodes {
@@ -57,7 +54,7 @@ fn reverse_bfs_iterative(
             node,
             distance: 0,
             windings: vec![0; rays.len()],
-            path: vec![index_to_pcoord(node.index())],
+            path: vec![PCoord::from_index(node.index())],
         });
     }
 
@@ -81,8 +78,8 @@ fn reverse_bfs_iterative(
         }
 
         for neighbor in graph.neighbors(state.node) {
-            let current_coord = index_to_pcoord(state.node.index());
-            let next_coord = index_to_pcoord(neighbor.index());
+            let current_coord = PCoord::from_index(state.node.index());
+            let next_coord = PCoord::from_index(neighbor.index());
 
             // Calculate step windings across all rays
             let mut new_windings = state.windings.clone();

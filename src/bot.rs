@@ -1,7 +1,7 @@
 use rand::RngExt;
 
 use crate::{
-    BCoord, Map, Orientation, PCoord, Team, bcoord_to_index,
+    BCoord, Map, Orientation, PCoord, Team,
     bot::Action::Move,
     path::{self, Path},
 };
@@ -101,8 +101,8 @@ pub fn print_path(map: &Map, path: &Path) {
                 (1, 0) => {
                     let bcoord_above = BCoord::new((x - 1) / 2, (y - 2) / 2);
                     let bcoord_below = BCoord::new((x - 1) / 2, y / 2);
-                    let index_above = bcoord_to_index(bcoord_above);
-                    let index_below = bcoord_to_index(bcoord_below);
+                    let index_above = bcoord_above.to_index();
+                    let index_below = bcoord_below.to_index();
 
                     let mut has_barricade = None;
 
@@ -126,8 +126,8 @@ pub fn print_path(map: &Map, path: &Path) {
                 (0, 1) => {
                     let bcoord_left = BCoord::new((x - 2) / 2, (y - 1) / 2);
                     let bcoord_right = BCoord::new(x / 2, (y - 1) / 2);
-                    let index_left = bcoord_to_index(bcoord_left);
-                    let index_right = bcoord_to_index(bcoord_right);
+                    let index_left = bcoord_left.to_index();
+                    let index_right = bcoord_right.to_index();
 
                     let mut has_barricade = None;
 
@@ -150,7 +150,7 @@ pub fn print_path(map: &Map, path: &Path) {
                 }
                 (1, 1) => {
                     let bcoord = BCoord::new((x - 1) / 2, (y - 1) / 2);
-                    let index = bcoord_to_index(bcoord);
+                    let index = bcoord.to_index();
 
                     if let Some(barricade) = &map.barricade_grid[index] {
                         match barricade.orientation {
