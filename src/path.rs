@@ -1,6 +1,9 @@
 use colored::*;
 use petgraph::graph::NodeIndex;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    ops::{Deref, DerefMut},
+};
 
 use crate::{
     coord::{BCoord, PCoord},
@@ -9,9 +12,44 @@ use crate::{
     types::{Orientation, Team},
 };
 
-pub type Path = Vec<PCoord>;
+#[derive(Debug, Clone)]
+pub struct Path {
+    steps: Vec<PCoord>,
+    windings: WindingVec,
+}
 
-pub fn find_paths(map: &Map, start: PCoord, targets: &Vec<PCoord>) -> Vec<Path> {
+impl Path {
+    pub fn new(steps: Vec<PCoord>, windings: WindingVec) -> Self {
+        Self { steps, windings }
+    }
+
+    pub fn is_homotopic_to(&self, other: &Path) -> bool {
+        self.steps.first().eq(&other.first())
+            && self.last().eq(&other.last())
+            && self.windings.iter().eq(&other.windings)
+    }
+
+    pub fn reverse(&mut self) {
+        self.steps.reverse();
+        self.windings.iter_mut().for_each(|w| *w = -*w);
+    }
+}
+
+impl DerefMut for Path {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.steps
+    }
+}
+
+impl Deref for Path {
+    type Target = Vec<PCoord>;
+
+    fn deref(&self) -> &Self::Target {
+        &self.steps
+    }
+}
+
+pub fn find_paths(map: &Map, start: PCoord, targets: &[PCoord]) -> Vec<Path> {
     let rays: Vec<_> = map
         .barricade_grid
         .iter()
@@ -35,14 +73,14 @@ pub fn find_paths(map: &Map, start: PCoord, targets: &Vec<PCoord>) -> Vec<Path> 
 }
 
 type Ray = (PCoord, Orientation);
-type WindingVec = Vec<i32>;
+pub type WindingVec = Vec<i32>;
 
 #[derive(Clone, Debug)]
 struct SearchState {
     node: NodeIndex<usize>,
     distance: usize,
     windings: WindingVec,
-    path: Vec<PCoord>, // Track path history if needed
+    path: Vec<PCoord>,
 }
 
 fn reverse_bfs_iterative(
@@ -121,11 +159,46 @@ fn reverse_bfs_iterative(
         }
     }
 
-    for class in homotopy_classes.iter() {
-        println!("{:?}", class);
+    homotopy_classes
+        .into_iter()
+        .map(|(windings, mut steps)| {
+            steps.reverse();
+            Path::new(steps, windings)
+        })
+        .collect()
+}
+
+pub fn find_first_fork(paths: &[Path]) -> Option<PCoord> {
+    if paths.len() < 2 {
+        return None;
     }
 
-    homotopy_classes.into_values().collect()
+    let min_len = paths.iter().map(|p| p.len()).min()?;
+    if min_len == 0 {
+        return None;
+    }
+
+    let mut last_common_idx = 0;
+
+    for i in 0..min_len {
+        let reference_coord = paths[0][i];
+        if paths.iter().all(|path| path[i] == reference_coord) {
+            last_common_idx = i;
+        } else {
+            break;
+        }
+    }
+
+    if last_common_idx < min_len - 1 {
+        Some(paths[0][last_common_idx])
+    } else {
+        let first_len = paths[0].len();
+        if paths.iter().any(|p| p.len() != first_len) {
+            Some(paths[0][min_len - 1])
+        } else {
+            None
+        }
+    }
 }
 
 // note: maybe could be smiplified by treating horizontal and vertical barricades the same
@@ -169,8 +242,6 @@ fn ray_winding(ray: &(PCoord, Orientation), from: PCoord, to: PCoord) -> i32 {
 }
 
 pub fn print_path(map: &Map, path: &Path) {
-    let path_set: HashSet<PCoord> = path.iter().cloned().collect();
-
     print!(" ");
     for x in 0..17 {
         if x % 2 == 0 {
@@ -193,8 +264,34 @@ pub fn print_path(map: &Map, path: &Path) {
                             Team::Red => print!("{}", " ● ".red()),
                             Team::Blue => print!("{}", " ● ".blue()),
                         }
-                    } else if path_set.contains(&pcoord) {
-                        print!("{}", " · ".yellow());
+                    } else if let Some(index) = path.iter().position(|coord| *coord == pcoord) {
+                        let prev = path[index - 1];
+                        if let Some(next) = path.get(index + 1) {
+                            let prev_diff = prev - pcoord;
+                            let next_diff = *next - pcoord;
+
+                            let left = prev_diff.x == -1 || next_diff.x == -1;
+                            let right = prev_diff.x == 1 || next_diff.x == 1;
+                            let up = prev_diff.y == -1 || next_diff.y == -1;
+                            let down = prev_diff.y == 1 || next_diff.y == 1;
+
+                            if left && right {
+                                print!("{}", "╴─╶".yellow());
+                            } else if left && up {
+                                print!("{}", "╴╯ ".yellow());
+                            } else if left && down {
+                                print!("{}", "╴╮ ".yellow());
+                            } else if right && up {
+                                print!("{}", " ╰╶".yellow());
+                            } else if right && down {
+                                print!("{}", " ╭╶".yellow());
+                            } else if up && down {
+                                print!("{}", " ╎ ".yellow());
+                            }
+                        } else {
+                            print!("{}", " ◈ ".yellow());
+                        }
+                        // print!("{}", " · ".yellow());
                     } else {
                         print!("   ");
                     }

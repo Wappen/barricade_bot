@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
-use petgraph::{stable_graph::StableUnGraph, visit::Bfs};
+use petgraph::{algo::astar, graph::NodeIndex, stable_graph::StableUnGraph, visit::Bfs};
 
 use crate::coord::PCoord;
 
@@ -20,6 +20,23 @@ impl NavigationGraph {
             }
         }
         false
+    }
+
+    pub fn find_shortest_path(&self, start: PCoord, finish: &[PCoord]) -> Option<Vec<PCoord>> {
+        let path = astar(
+            &self.0,
+            NodeIndex::new(start.to_index()),
+            |n| finish.contains(&PCoord::from_index(n.index())),
+            |_| 1,
+            |_| 0,
+        );
+
+        path.map(|(_, nodes)| {
+            nodes
+                .iter()
+                .map(|n| PCoord::from_index(n.index()))
+                .collect()
+        })
     }
 }
 

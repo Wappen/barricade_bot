@@ -7,11 +7,15 @@ pub mod map;
 pub mod path;
 pub mod types;
 
-use crate::{bot::RandomBot, game::Game};
+use crate::{
+    bot::{EnemyPathMaximizerBot, RandomBot},
+    game::Game,
+};
 
 fn main() {
     println!("Barricade!");
     let mut game = Game::new();
     // game.run();
-    game.pve(RandomBot);
+    game.pve(EnemyPathMaximizerBot);
+    // game.pvp();
 }

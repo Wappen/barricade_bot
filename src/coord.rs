@@ -6,7 +6,7 @@ use std::ops::{Deref, DerefMut};
 pub struct PCoord(IVec2);
 
 impl PCoord {
-    pub fn new(x: i32, y: i32) -> Self {
+    pub const fn new(x: i32, y: i32) -> Self {
         Self(IVec2 { x, y })
     }
 

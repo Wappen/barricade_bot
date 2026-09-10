@@ -14,6 +14,30 @@ pub struct Map {
     pub blue_coord: PCoord,
 }
 
+pub const RED_FINISH_LINE: [PCoord; 9] = [
+    PCoord::new(0, 8),
+    PCoord::new(1, 8),
+    PCoord::new(2, 8),
+    PCoord::new(3, 8),
+    PCoord::new(4, 8),
+    PCoord::new(5, 8),
+    PCoord::new(6, 8),
+    PCoord::new(7, 8),
+    PCoord::new(8, 8),
+];
+
+pub const BLUE_FINISH_LINE: [PCoord; 9] = [
+    PCoord::new(0, 0),
+    PCoord::new(1, 0),
+    PCoord::new(2, 0),
+    PCoord::new(3, 0),
+    PCoord::new(4, 0),
+    PCoord::new(5, 0),
+    PCoord::new(6, 0),
+    PCoord::new(7, 0),
+    PCoord::new(8, 0),
+];
+
 impl Map {
     pub fn new(red_coord: PCoord, blue_coord: PCoord) -> Self {
         Self {
@@ -198,6 +222,53 @@ impl Map {
         }
 
         false
+    }
+
+    pub fn find_shortest_path_to_win(&self, team: Team) -> Vec<PCoord> {
+        let graph = self.barricade_grid.get_navgraph();
+        let start = self.get_player_coord(team);
+
+        let finish = match team {
+            Team::Red => RED_FINISH_LINE,
+            Team::Blue => BLUE_FINISH_LINE,
+        };
+
+        graph
+            .find_shortest_path(start, &finish)
+            .expect("could not find path to finish")
+    }
+
+    pub fn find_valid_barricades(&self) -> Vec<(BCoord, Orientation)> {
+        let mut result = vec![];
+
+        for y in 0..8 {
+            for x in 0..8 {
+                let coord = BCoord::new(x, y);
+                if self.can_place_barricade(coord, Orientation::Horizontal) {
+                    result.push((coord, Orientation::Horizontal));
+                }
+                if self.can_place_barricade(coord, Orientation::Vertical) {
+                    result.push((coord, Orientation::Vertical));
+                }
+            }
+        }
+
+        result
+    }
+
+    pub fn find_valid_moves(&self, team: Team) -> Vec<PCoord> {
+        let mut result = vec![];
+
+        for y in 0..9 {
+            for x in 0..9 {
+                let coord = PCoord::new(x, y);
+                if self.can_step(team, coord) {
+                    result.push(coord);
+                }
+            }
+        }
+
+        result
     }
 
     pub fn try_step(&mut self, team: Team, to: PCoord) -> Result<(), ()> {
