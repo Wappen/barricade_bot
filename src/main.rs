@@ -1,4 +1,5 @@
 pub mod bot;
+pub mod path;
 
 use colored::{Color, Colorize};
 use petgraph::{stable_graph::StableUnGraph, visit::Bfs};
@@ -44,7 +45,7 @@ impl Player {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Orientation {
     Horizontal,
     Vertical,
@@ -478,7 +479,7 @@ impl Map {
 
 impl Display for Map {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "  ")?;
+        write!(f, " ")?;
         for x in 0..17 {
             if x % 2 == 0 {
                 let c = (b'a' + x / 2 as u8) as char;
@@ -488,7 +489,7 @@ impl Display for Map {
             }
         }
         writeln!(f)?;
-        write!(f, " {}", "1".bright_black())?;
+        write!(f, "{}", "1".bright_black())?;
         for y in 0..17 {
             for x in 0..17 {
                 match (x % 2, y % 2) {
@@ -599,19 +600,19 @@ impl Display for Map {
                 // newline
                 if x == 16 {
                     if y % 2 == 0 {
-                        write!(f, " {}", ((y + 1) / 2 + 1).to_string().bright_black())?;
+                        write!(f, "{}", ((y + 1) / 2 + 1).to_string().bright_black())?;
                     } else {
-                        write!(f, "{}", "╴ ".bright_black())?;
+                        write!(f, "{}", "╴".bright_black())?;
                     }
                     writeln!(f)?;
                     if y % 2 == 0 {
                         if y != 16 {
-                            write!(f, "{}", " ╶".bright_black())?;
+                            write!(f, "{}", "╶".bright_black())?;
                         } else {
-                            write!(f, "  ")?;
+                            write!(f, " ")?;
                         }
                     } else {
-                        write!(f, " {}", ((y + 1) / 2 + 1).to_string().bright_black())?;
+                        write!(f, "{}", ((y + 1) / 2 + 1).to_string().bright_black())?;
                     }
                 }
             }
@@ -728,6 +729,10 @@ fn pcoord_to_index(coord: PCoord) -> usize {
 
 fn index_to_pcoord(index: usize) -> PCoord {
     return PCoord::new((index % 9) as _, (index / 9) as _);
+}
+
+fn index_to_bcoord(index: usize) -> PCoord {
+    return BCoord::new((index % 8) as _, (index / 8) as _);
 }
 
 fn bcoord_in_bounds(coord: BCoord) -> bool {
