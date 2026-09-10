@@ -1,7 +1,12 @@
 use petgraph::graph::NodeIndex;
 use std::collections::{HashMap, HashSet, VecDeque};
 
-use crate::{BCoord, Map, NavGraph, Orientation, PCoord};
+use crate::{
+    coord::{BCoord, PCoord},
+    graph::NavGraph,
+    map::Map,
+    types::Orientation,
+};
 
 pub type Path = Vec<PCoord>;
 

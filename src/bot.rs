@@ -1,9 +1,11 @@
 use rand::RngExt;
 
 use crate::{
-    BCoord, Map, Orientation, PCoord, Team,
     bot::Action::Move,
+    coord::{BCoord, PCoord},
+    map::Map,
     path::{self, Path},
+    types::{Orientation, Team},
 };
 
 pub struct Context {
