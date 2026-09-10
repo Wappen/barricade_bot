@@ -2,9 +2,9 @@ use rand::RngExt;
 
 use crate::{
     bot::Action::Move,
-    coord::{BCoord, PCoord},
+    coord::PCoord,
     map::Map,
-    path::{self, Path},
+    path::{self, print_path},
     types::{Orientation, Team},
 };
 
@@ -64,135 +64,4 @@ impl Bot for RandomBot {
             }
         }
     }
-}
-
-use colored::*;
-use std::collections::HashSet;
-
-pub fn print_path(map: &Map, path: &Path) {
-    let path_set: HashSet<PCoord> = path.iter().cloned().collect();
-
-    print!(" ");
-    for x in 0..17 {
-        if x % 2 == 0 {
-            let c = (b'a' + x / 2 as u8) as char;
-            print!(" {} ", c.to_string().bright_black());
-        } else {
-            print!("{}", "╷".bright_black());
-        }
-    }
-    println!();
-    print!("{}", "1".bright_black());
-
-    for y in 0..17 {
-        for x in 0..17 {
-            match (x % 2, y % 2) {
-                (0, 0) => {
-                    let pcoord = PCoord::new(x / 2, y / 2);
-                    if let Some(team) = map.get_team_at(pcoord) {
-                        match team {
-                            Team::Red => print!("{}", " ● ".red()),
-                            Team::Blue => print!("{}", " ● ".blue()),
-                        }
-                    } else if path_set.contains(&pcoord) {
-                        print!("{}", " · ".yellow());
-                    } else {
-                        print!("   ");
-                    }
-                }
-                (1, 0) => {
-                    let bcoord_above = BCoord::new((x - 1) / 2, (y - 2) / 2);
-                    let bcoord_below = BCoord::new((x - 1) / 2, y / 2);
-                    let index_above = bcoord_above.to_index();
-                    let index_below = bcoord_below.to_index();
-
-                    let mut has_barricade = None;
-
-                    if let Some(Some(barricade)) = map.barricade_grid.get(index_above) {
-                        if barricade.orientation == Orientation::Vertical {
-                            has_barricade = Some(barricade);
-                        }
-                    }
-                    if let Some(Some(barricade)) = map.barricade_grid.get(index_below) {
-                        if barricade.orientation == Orientation::Vertical {
-                            has_barricade = Some(barricade);
-                        }
-                    }
-
-                    if let Some(barricade) = has_barricade {
-                        print!("{}", "┃".color(barricade.team));
-                    } else {
-                        print!("{}", "│".bright_black());
-                    }
-                }
-                (0, 1) => {
-                    let bcoord_left = BCoord::new((x - 2) / 2, (y - 1) / 2);
-                    let bcoord_right = BCoord::new(x / 2, (y - 1) / 2);
-                    let index_left = bcoord_left.to_index();
-                    let index_right = bcoord_right.to_index();
-
-                    let mut has_barricade = None;
-
-                    if let Some(Some(barricade)) = map.barricade_grid.get(index_left) {
-                        if barricade.orientation == Orientation::Horizontal {
-                            has_barricade = Some(barricade);
-                        }
-                    }
-                    if let Some(Some(barricade)) = map.barricade_grid.get(index_right) {
-                        if barricade.orientation == Orientation::Horizontal {
-                            has_barricade = Some(barricade);
-                        }
-                    }
-
-                    if let Some(barricade) = has_barricade {
-                        print!("{}", "━━━".color(barricade.team));
-                    } else {
-                        print!("{}", "───".bright_black());
-                    }
-                }
-                (1, 1) => {
-                    let bcoord = BCoord::new((x - 1) / 2, (y - 1) / 2);
-                    let index = bcoord.to_index();
-
-                    if let Some(barricade) = &map.barricade_grid[index] {
-                        match barricade.orientation {
-                            Orientation::Horizontal => print!("{}", "┿".color(barricade.team)),
-                            Orientation::Vertical => print!("{}", "╂".color(barricade.team)),
-                        }
-                    } else {
-                        print!("{}", "┼".bright_black());
-                    }
-                }
-                _ => {}
-            }
-
-            if x == 16 {
-                if y % 2 == 0 {
-                    print!("{}", ((y + 1) / 2 + 1).to_string().bright_black());
-                } else {
-                    print!("{}", "╴".bright_black());
-                }
-                println!();
-                if y % 2 == 0 {
-                    if y != 16 {
-                        print!("{}", "╶".bright_black());
-                    } else {
-                        print!(" ");
-                    }
-                } else {
-                    print!("{}", ((y + 1) / 2 + 1).to_string().bright_black());
-                }
-            }
-        }
-    }
-
-    for x in 0..17 {
-        if x % 2 == 0 {
-            let c = (b'a' + x / 2 as u8) as char;
-            print!(" {} ", c.to_string().bright_black());
-        } else {
-            print!("{}", "╵".bright_black());
-        }
-    }
-    println!();
 }
