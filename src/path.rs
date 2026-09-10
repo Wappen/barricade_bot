@@ -241,7 +241,7 @@ fn ray_winding(ray: &(PCoord, Orientation), from: PCoord, to: PCoord) -> i32 {
     }
 }
 
-pub fn print_path(map: &Map, path: &Path) {
+pub fn print_path(map: &Map, path: &[PCoord]) {
     print!(" ");
     for x in 0..17 {
         if x % 2 == 0 {

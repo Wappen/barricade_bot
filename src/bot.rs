@@ -68,6 +68,10 @@ impl Bot for EnemyPathMaximizerBot {
     fn get_action(&mut self, context: Context) -> Action {
         let valid_barricades = context.map.find_valid_barricades();
 
+        let path = context.map.find_shortest_path_to_win(Team::Blue);
+        let enemy_path = context.map.find_shortest_path_to_win(Team::Red);
+        let current_rating = enemy_path.len() as i32 - path.len() as i32;
+
         let ratings = valid_barricades.iter().map(|(coord, orientation)| {
             let mut test_map = context.map.clone();
             let _ = test_map.try_place_barricade(Team::Blue, *coord, *orientation);
@@ -85,7 +89,7 @@ impl Bot for EnemyPathMaximizerBot {
             .max_by(|(rating, _, _), (other_rating, _, _)| rating.cmp(other_rating))
             .unwrap();
 
-        if best_rating > 0 && context.inventory > 0 {
+        if best_rating > current_rating && context.inventory > 0 {
             return Barricade(best_coord.to_pcoord(), *best_orientation);
         } else {
             let shortest_path = context.map.find_shortest_path_to_win(Team::Blue);
