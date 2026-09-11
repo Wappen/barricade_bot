@@ -77,7 +77,7 @@ impl Game {
         }
     }
 
-    fn read_action_from_stdin() -> Option<Action> {
+    pub fn read_action_from_stdin() -> Option<Action> {
         let mut input = String::new();
         stdin().read_line(&mut input).ok()?;
         Action::parse(input)

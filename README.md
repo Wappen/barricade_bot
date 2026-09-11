@@ -19,3 +19,7 @@
 - `fn find_chokepoints(&self, team: Team) -> Vec<PCoord>`: Identifies critical graph articulation points or narrow nodes where the enemy has zero alternative routing flexibility.
 - `fn evaluates_race_advantage(&self) -> i32`: Calculates `enemy_distance - self_distance`. A positive value means your bot is winning the race; a negative value signals it's time to switch to aggressive wall blocking.
 - `fn opponent_coord(&self, team: Team) -> PCoord`: Quick lookup helper for tracking enemy position relative to your own trajectory.
+
+## Other
+
+- [ ] path api: `Path` -> `HomotopyClass` consisting of only the winding vector & `start` / `end` coords and making `Path = Vec<PCoord>`. Adding `PathMetrics` or similar for blockability

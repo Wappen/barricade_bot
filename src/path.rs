@@ -61,7 +61,7 @@ pub fn find_paths(map: &Map, start: PCoord, targets: &[PCoord]) -> Vec<Path> {
         })
         .collect();
 
-    println!("rays: {:?}", &rays);
+    // println!("rays: {:?}", &rays);
 
     let graph = map.barricade_grid.get_navgraph();
     let start_nodes = targets
@@ -199,6 +199,117 @@ pub fn find_first_fork(paths: &[Path]) -> Option<PCoord> {
             None
         }
     }
+}
+
+// finds barricade spots that block the path
+// returns a list of placable barricades together with the index of the step behind which the barricade is placed
+pub fn find_blockades(map: &Map, path: &[PCoord]) -> Vec<(usize, BCoord, Orientation)> {
+    let mut blockades = vec![];
+
+    for (index, step) in path.windows(2).enumerate() {
+        let from = step[0];
+        let to = step[1];
+
+        let diff = to - from;
+
+        if diff.x.abs() == 1 && diff.y.abs() == 0 {
+            // horizontal move
+            let left = from.x.min(to.x);
+            let above = BCoord::new(left, from.y - 1);
+            let below = BCoord::new(left, from.y);
+
+            if map.can_place_barricade(above, Orientation::Vertical) {
+                blockades.push((index, above, Orientation::Vertical));
+            }
+            if map.can_place_barricade(below, Orientation::Vertical) {
+                blockades.push((index, below, Orientation::Vertical));
+            }
+        } else if diff.x.abs() == 0 && diff.y.abs() == 1 {
+            // vertical move
+            let upper = from.y.min(to.y);
+            let left = BCoord::new(from.x - 1, upper);
+            let right = BCoord::new(from.x, upper);
+
+            if map.can_place_barricade(left, Orientation::Horizontal) {
+                blockades.push((index, left, Orientation::Horizontal));
+            }
+            if map.can_place_barricade(right, Orientation::Horizontal) {
+                blockades.push((index, right, Orientation::Horizontal));
+            }
+        }
+    }
+
+    blockades
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct BlockadeMetrics {
+    pub length_increase: usize,
+    pub is_proper_detour: bool,
+    pub barricade: (BCoord, Orientation),
+}
+
+// calculates the max length increase a single barricade can have on that path
+// in a way that simulates following that path until the worst barricade is placed in the last moment
+// which is why finish is needed, to calculate the actual impact on winnability for that path.
+// Also returns a bool indicating if the detour changed the homotopy class of the resulting detour
+// Also returns the best barricade
+pub fn calculate_blockability(
+    map: &Map,
+    path: &[PCoord],
+    finish: &[PCoord],
+) -> Option<BlockadeMetrics> {
+    let blockades = find_blockades(map, path);
+    let mut max_length_increase = 0;
+    let mut max_detour = vec![];
+    let mut best_barricade = None;
+
+    for (index, coord, orientation) in &blockades {
+        let mut test_map = map.clone();
+        // TODO: team should not be necessary to test barricade impact
+        test_map
+            .try_place_barricade(Team::Red, *coord, *orientation)
+            .expect("could not place barricade at calculated blockade spot");
+
+        let graph = test_map.barricade_grid.get_navgraph();
+        let start = path[*index];
+
+        // if no shortest path is found the barricade should be illegal from that start
+        if let Some(shortest_path_continuation) = graph.find_shortest_path(start, &finish) {
+            if shortest_path_continuation.len() > max_length_increase {
+                max_length_increase = shortest_path_continuation.len();
+                max_detour = path[0..*index].into();
+                max_detour.extend_from_slice(&shortest_path_continuation[1..]);
+                best_barricade = Some((*coord, *orientation));
+            }
+        }
+    }
+
+    // calculate detour winding for original map for comparability
+    let detour_winding = calculate_path_winding(map, &max_detour);
+    let original_winding = calculate_path_winding(map, &path);
+
+    let is_proper_detour = detour_winding != original_winding;
+    best_barricade.map(|b| BlockadeMetrics {
+        length_increase: max_length_increase,
+        is_proper_detour,
+        barricade: b,
+    })
+}
+
+pub fn calculate_path_winding(map: &Map, path: &[PCoord]) -> WindingVec {
+    let rays = map
+        .barricade_grid
+        .iter()
+        .enumerate()
+        .filter_map(|(index, option)| {
+            option
+                .as_ref()
+                .map(|barricade| (BCoord::from_index(index).to_pcoord(), barricade.orientation))
+        });
+
+    rays.map(|r| path.windows(2).map(|w| ray_winding(&r, w[0], w[1])).sum())
+        .collect()
 }
 
 // note: maybe could be smiplified by treating horizontal and vertical barricades the same

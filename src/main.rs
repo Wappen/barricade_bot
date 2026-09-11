@@ -8,8 +8,9 @@ pub mod path;
 pub mod types;
 
 use crate::{
-    bot::{Bot, EnemyPathMaximizerBot, RandomBot},
+    bot::{Bot, Context, EnemyPathMaximizerBot, RandomBot},
     game::Game,
+    path::{find_paths, print_path},
 };
 
 fn main() {
@@ -25,4 +26,43 @@ fn main() {
     //     Box::new(|ctx| Some(blue.get_action(ctx))),
     // );
     // game.pvp();
+
+    // game.play(
+    //     Box::new(|ctx: Context| {
+    //         let start = ctx.map.get_player_coord(ctx.team);
+    //         let paths = path::find_paths(&ctx.map, start, ctx.finish_line);
+
+    //         // filter out paths which have inversely wound paths which are paths that lie behind the player
+    //         // let filtered: Vec<_> = paths
+    //         //     .iter()
+    //         //     .filter(|&a| {
+    //         //         !paths
+    //         //             .iter()
+    //         //             .any(|b| !a.is_homotopic_to(b) && a.has_inverse_winding(b))
+    //         //     })
+    //         //     .collect();
+    //         // for path in filtered {
+    //         //     print_path(&ctx.map, &path);
+    //         // }
+    //         Game::read_action_from_stdin()
+    //     }),
+    //     Box::new(|ctx| {
+    //         let start = ctx.map.get_player_coord(ctx.team);
+    //         let paths = path::find_paths(&ctx.map, start, ctx.finish_line);
+
+    //         // filter out paths which have inversely wound paths which are paths that lie behind the player
+    //         // let filtered: Vec<_> = paths
+    //         //     .iter()
+    //         //     .filter(|&a| {
+    //         //         !paths
+    //         //             .iter()
+    //         //             .any(|b| !a.is_homotopic_to(b) && a.has_inverse_winding(b))
+    //         //     })
+    //         //     .collect();
+    //         // for path in filtered {
+    //         //     print_path(&ctx.map, &path);
+    //         // }
+    //         Game::read_action_from_stdin()
+    //     }),
+    // );
 }
