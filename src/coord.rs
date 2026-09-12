@@ -45,6 +45,12 @@ impl Deref for PCoord {
     }
 }
 
+impl From<IVec2> for PCoord {
+    fn from(value: IVec2) -> Self {
+        PCoord(value)
+    }
+}
+
 #[derive(Debug, Clone, Copy, Add, Sub, Mul, Div, PartialEq, Eq, Hash)]
 pub struct BCoord(IVec2);
 

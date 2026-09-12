@@ -60,6 +60,14 @@ impl Map {
         Err(())
     }
 
+    pub fn try_step(&mut self, team: Team, to: PCoord) -> Result<(), ()> {
+        if self.can_step(team, to) {
+            self.move_player(team, to);
+            return Ok(());
+        }
+        Err(())
+    }
+
     pub fn can_place_barricade(&self, coord: BCoord, orientation: Orientation) -> bool {
         if !coord.is_in_bounds() {
             return false;
@@ -121,26 +129,6 @@ impl Map {
         let blue_can_finish = navgraph.can_reach_y_level(self.blue_coord, 0);
 
         return !in_place_occupied && !neighbor_occupied && red_can_finish && blue_can_finish;
-    }
-
-    pub fn move_player(&mut self, team: Team, coord: PCoord) {
-        match team {
-            Team::Red => self.red_coord = coord,
-            Team::Blue => self.blue_coord = coord,
-        }
-    }
-
-    pub fn is_occupied(&self, coord: PCoord) -> bool {
-        return !coord.is_in_bounds() || self.red_coord == coord || self.blue_coord == coord;
-    }
-
-    pub fn get_team_at(&self, coord: PCoord) -> Option<Team> {
-        if self.red_coord == coord {
-            return Some(Team::Red);
-        } else if self.blue_coord == coord {
-            return Some(Team::Blue);
-        }
-        None
     }
 
     pub fn can_step(&self, player_team: Team, to: PCoord) -> bool {
@@ -271,12 +259,24 @@ impl Map {
         result
     }
 
-    pub fn try_step(&mut self, team: Team, to: PCoord) -> Result<(), ()> {
-        if self.can_step(team, to) {
-            self.move_player(team, to);
-            return Ok(());
+    pub fn move_player(&mut self, team: Team, coord: PCoord) {
+        match team {
+            Team::Red => self.red_coord = coord,
+            Team::Blue => self.blue_coord = coord,
         }
-        Err(())
+    }
+
+    pub fn is_occupied(&self, coord: PCoord) -> bool {
+        return !coord.is_in_bounds() || self.red_coord == coord || self.blue_coord == coord;
+    }
+
+    pub fn get_team_at(&self, coord: PCoord) -> Option<Team> {
+        if self.red_coord == coord {
+            return Some(Team::Red);
+        } else if self.blue_coord == coord {
+            return Some(Team::Blue);
+        }
+        None
     }
 
     pub fn get_player_coord(&self, team: Team) -> PCoord {

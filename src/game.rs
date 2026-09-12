@@ -1,5 +1,7 @@
 use std::io::stdin;
 
+use glam::IVec2;
+
 use crate::{
     bot::{Bot, Context},
     coord::PCoord,
@@ -15,8 +17,8 @@ pub enum Action {
 
 impl Action {
     pub fn parse(input: impl AsRef<str>) -> Option<Action> {
-        let trimmed_input = input.as_ref().trim().to_ascii_lowercase();
-        let mut chars = trimmed_input.chars();
+        let lowercase_input = input.as_ref().to_ascii_lowercase();
+        let mut chars = lowercase_input.chars();
 
         let c1 = chars.next()?;
         let c2 = chars.next()?;
@@ -77,10 +79,27 @@ impl Game {
         }
     }
 
-    pub fn read_action_from_stdin() -> Option<Action> {
+    pub fn read_action_from_stdin(ctx: Context) -> Option<Action> {
         let mut input = String::new();
         stdin().read_line(&mut input).ok()?;
-        Action::parse(input)
+        let input = input.trim();
+
+        if input.len() == 1 {
+            // try parse WASD input
+            match input.to_ascii_lowercase().as_str() {
+                "w" => Some(Move(
+                    ctx.map.get_player_coord(ctx.team) + IVec2::NEG_Y.into(),
+                )),
+                "a" => Some(Move(
+                    ctx.map.get_player_coord(ctx.team) + IVec2::NEG_X.into(),
+                )),
+                "s" => Some(Move(ctx.map.get_player_coord(ctx.team) + IVec2::Y.into())),
+                "d" => Some(Move(ctx.map.get_player_coord(ctx.team) + IVec2::X.into())),
+                _ => None,
+            }
+        } else {
+            Action::parse(input)
+        }
     }
 
     fn execute_action(&mut self, action: Action, team: Team) -> bool {
@@ -109,14 +128,14 @@ impl Game {
 
     pub fn pvp(&mut self) {
         self.play(
-            Box::new(|_| Self::read_action_from_stdin()),
-            Box::new(|_| Self::read_action_from_stdin()),
+            Box::new(Self::read_action_from_stdin),
+            Box::new(Self::read_action_from_stdin),
         );
     }
 
     pub fn pve(&mut self, mut bot: impl Bot) {
         self.play(
-            Box::new(|_| Self::read_action_from_stdin()),
+            Box::new(Self::read_action_from_stdin),
             Box::new(move |ctx| Some(bot.get_action(ctx))),
         );
     }

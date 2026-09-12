@@ -1,8 +1,14 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    collections::{HashMap, HashSet, VecDeque},
+    ops::{Deref, DerefMut},
+};
+
+use petgraph::graph::NodeIndex;
 
 use crate::{
     coord::{BCoord, PCoord},
     graph::{NavGraph, NavigationGraph},
+    path::{Path, WindingVec, step_ray_winding},
     types::{Barricade, Orientation},
 };
 
@@ -82,6 +88,115 @@ impl BarricadeGrid {
             return false;
         }
     }
+
+    pub fn find_paths(&self, start: PCoord, targets: &[PCoord]) -> HashMap<WindingVec, Path> {
+        let rays: Vec<_> = self
+            .iter()
+            .enumerate()
+            .filter_map(|(index, option)| {
+                option
+                    .as_ref()
+                    .map(|barricade| (BCoord::from_index(index).to_pcoord(), barricade.orientation))
+            })
+            .collect();
+
+        let graph = self.get_navgraph();
+        let start_nodes = targets
+            .iter()
+            .map(|target| NodeIndex::new(target.to_index()))
+            .collect();
+
+        return reverse_bfs_iterative(&graph, &rays, start, start_nodes);
+    }
+}
+
+type Ray = (PCoord, Orientation);
+
+#[derive(Clone, Debug)]
+struct SearchState {
+    node: NodeIndex<usize>,
+    distance: usize,
+    windings: WindingVec,
+    path: Path,
+}
+
+fn reverse_bfs_iterative(
+    graph: &NavGraph,
+    rays: &[Ray],
+    finish: PCoord,
+    start_nodes: Vec<NodeIndex<usize>>,
+) -> HashMap<WindingVec, Path> {
+    let mut queue = VecDeque::new();
+    let finish_index = finish.to_index();
+
+    // Initialize queue with target nodes (e.g., winning row)
+    for node in start_nodes {
+        queue.push_back(SearchState {
+            node,
+            distance: 0,
+            windings: vec![0; rays.len()],
+            path: vec![PCoord::from_index(node.index())].into(),
+        });
+    }
+
+    // Visited set tracks both position AND homotopy signature
+    let mut visited: HashSet<(NodeIndex<usize>, WindingVec)> = HashSet::new();
+    let mut homotopy_classes: HashMap<WindingVec, Path> = HashMap::new();
+
+    while let Some(state) = queue.pop_front() {
+        if state.node.index() == finish_index {
+            let is_simple = {
+                let mut seen = HashSet::new();
+                state.path.iter().all(|coord| seen.insert(*coord))
+            };
+
+            if is_simple {
+                homotopy_classes
+                    .entry(state.windings.clone())
+                    .or_insert(state.path);
+            }
+            continue;
+        }
+
+        for neighbor in graph.neighbors(state.node) {
+            let current_coord = PCoord::from_index(state.node.index());
+            let next_coord = PCoord::from_index(neighbor.index());
+
+            // Calculate step windings across all rays
+            let mut new_windings = state.windings.clone();
+            let mut valid_windings = true;
+
+            for (i, ray) in rays.iter().enumerate() {
+                let dw = step_ray_winding(ray, current_coord, next_coord);
+                new_windings[i] += dw;
+
+                // Prune paths that loop too many times around the same barricade ray
+                if new_windings[i].abs() > 1 {
+                    valid_windings = false;
+                    break;
+                }
+            }
+
+            if !valid_windings {
+                continue;
+            }
+
+            let visit_key = (neighbor, new_windings.clone());
+            if visited.insert(visit_key) {
+                let mut next_path = state.path.clone();
+                next_path.push(next_coord);
+
+                queue.push_back(SearchState {
+                    node: neighbor,
+                    distance: state.distance + 1,
+                    windings: new_windings,
+                    path: next_path,
+                });
+            }
+        }
+    }
+
+    homotopy_classes
 }
 
 impl DerefMut for BarricadeGrid {

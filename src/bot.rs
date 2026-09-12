@@ -1,11 +1,10 @@
 use std::{thread::sleep, time::Duration};
 
 use crate::{
-    bot::Action::Move,
     coord::PCoord,
-    game::Action::{self, Barricade},
+    game::Action::{self, Barricade, Move},
     map::Map,
-    path::{self, calculate_blockability, find_blockades, print_path},
+    path::Path,
     types::Team,
 };
 
@@ -53,13 +52,18 @@ impl Bot for RandomBot {
         loop {
             let coord = context.map.get_player_coord(context.team);
             // let targets = (0..9).map(|x| PCoord::new(x, 0)).collect();
-            let paths = path::find_paths(&context.map, coord, context.finish_line);
+            let paths: Vec<_> = context
+                .map
+                .barricade_grid
+                .find_paths(coord, context.finish_line)
+                .into_values()
+                .collect();
 
-            let first_fork = path::find_first_fork(&paths);
+            let first_fork = Path::find_first_fork(&paths);
 
             for (index, path) in paths.iter().enumerate() {
                 println!("Path ({}/{})", index + 1, paths.len());
-                print_path(&context.map, path);
+                path.print(&context.map);
             }
 
             if first_fork.is_some_and(|fork| fork == coord) {
@@ -110,7 +114,12 @@ impl Bot for EnemyPathMaximizerBot {
             return Barricade(best_coord.to_pcoord(), *best_orientation);
         } else {
             let coord = ctx.map.get_player_coord(ctx.team);
-            let paths = path::find_paths(&ctx.map, coord, ctx.finish_line);
+            let paths: Vec<_> = ctx
+                .map
+                .barricade_grid
+                .find_paths(coord, ctx.finish_line)
+                .into_values()
+                .collect();
 
             // What it does:
             // find stable paths
@@ -123,12 +132,7 @@ impl Bot for EnemyPathMaximizerBot {
 
             let path_metrics: Vec<_> = paths
                 .iter()
-                .map(|path| {
-                    (
-                        path,
-                        calculate_blockability(&ctx.map, path, ctx.finish_line),
-                    )
-                })
+                .map(|path| (path, path.calculate_blockability(&ctx.map, ctx.finish_line)))
                 .collect();
 
             let stable_paths: Vec<_> = path_metrics
@@ -185,7 +189,7 @@ impl Bot for EnemyPathMaximizerBot {
                     }
                 }
             } else {
-                let first_fork = path::find_first_fork(&paths);
+                let first_fork = Path::find_first_fork(&paths);
 
                 if first_fork.is_some_and(|fork| fork == coord) && ctx.inventory > 0 {
                     // do not move as we would commit to the fork

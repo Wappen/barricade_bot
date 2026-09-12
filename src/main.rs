@@ -10,7 +10,6 @@ pub mod types;
 use crate::{
     bot::{Bot, Context, EnemyPathMaximizerBot, RandomBot},
     game::Game,
-    path::{find_paths, print_path},
 };
 
 fn main() {
