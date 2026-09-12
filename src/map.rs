@@ -4,6 +4,7 @@ use std::fmt::Display;
 use crate::{
     coord::{BCoord, PCoord},
     grid::BarricadeGrid,
+    path::Path,
     types::{Barricade, Orientation, Team},
 };
 
@@ -212,7 +213,7 @@ impl Map {
         false
     }
 
-    pub fn find_shortest_path_to_win(&self, team: Team) -> Vec<PCoord> {
+    pub fn find_shortest_path_to_win(&self, team: Team) -> Path {
         let graph = self.barricade_grid.get_navgraph();
         let start = self.get_player_coord(team);
 

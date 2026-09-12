@@ -182,7 +182,7 @@ impl Game {
             };
 
             let context = Context::new(
-                self.map.clone(),
+                &self.map,
                 self.blue_player.inventory,
                 self.red_player.inventory,
                 team,

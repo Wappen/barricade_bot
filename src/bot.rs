@@ -4,12 +4,13 @@ use crate::{
     coord::PCoord,
     game::Action::{self, Barricade, Move},
     map::Map,
-    path::Path,
+    path::{BlockadeMetrics, Path},
     types::Team,
 };
 
-pub struct Context {
-    pub map: Map,
+#[derive(Clone)]
+pub struct Context<'a> {
+    pub map: &'a Map,
     pub inventory: usize,
     pub enemy_inventory: usize,
     pub team: Team,
@@ -18,9 +19,9 @@ pub struct Context {
     pub enemy_finish_line: &'static [PCoord],
 }
 
-impl Context {
+impl<'a> Context<'a> {
     pub fn new(
-        map: Map,
+        map: &'a Map,
         inventory: usize,
         enemy_inventory: usize,
         team: Team,
@@ -36,6 +37,59 @@ impl Context {
             enemy_team,
             finish_line,
             enemy_finish_line,
+        }
+    }
+
+    pub fn player_coord(&self) -> PCoord {
+        self.map.get_player_coord(self.team)
+    }
+
+    pub fn enemy_coord(&self) -> PCoord {
+        self.map.get_player_coord(self.enemy_team)
+    }
+
+    pub fn find_winning_paths(&self) -> Vec<Path> {
+        self.map
+            .barricade_grid
+            .find_paths(self.player_coord(), self.finish_line)
+            .into_values()
+            .collect()
+    }
+
+    // infers the finish line from path end
+    pub fn calculate_blockability(&self, path: &Path) -> Option<BlockadeMetrics> {
+        let end = path.get(path.len() - 1)?;
+        let finish_line = if self.finish_line.contains(end) {
+            self.finish_line
+        } else if self.enemy_finish_line.contains(end) {
+            self.enemy_finish_line
+        } else {
+            return None;
+        };
+
+        path.calculate_blockability(&self.map, finish_line)
+    }
+
+    pub fn find_shortest_path(&self, from: PCoord, to: &[PCoord]) -> Option<Path> {
+        self.map
+            .barricade_grid
+            .get_navgraph()
+            .find_shortest_path(from, to)
+    }
+
+    pub fn find_shortest_winning_path(&self) -> Option<Path> {
+        self.find_shortest_path(self.player_coord(), self.finish_line)
+    }
+
+    pub fn enemy(&'a self) -> Context<'a> {
+        Context {
+            map: self.map,
+            inventory: self.enemy_inventory,
+            enemy_inventory: self.inventory,
+            team: self.enemy_team,
+            enemy_team: self.team,
+            finish_line: self.enemy_finish_line,
+            enemy_finish_line: self.finish_line,
         }
     }
 }
@@ -113,14 +167,6 @@ impl Bot for EnemyPathMaximizerBot {
         if best_rating > current_rating && ctx.inventory > 0 {
             return Barricade(best_coord.to_pcoord(), *best_orientation);
         } else {
-            let coord = ctx.map.get_player_coord(ctx.team);
-            let paths: Vec<_> = ctx
-                .map
-                .barricade_grid
-                .find_paths(coord, ctx.finish_line)
-                .into_values()
-                .collect();
-
             // What it does:
             // find stable paths
             // if stable paths is not empty => follow shortest stable path
@@ -130,9 +176,10 @@ impl Bot for EnemyPathMaximizerBot {
             //
             // note: counter blocking should be introduced to find real possibilities for the bot to fight for its shortest path
 
+            let paths: Vec<_> = ctx.find_winning_paths();
             let path_metrics: Vec<_> = paths
                 .iter()
-                .map(|path| (path, path.calculate_blockability(&ctx.map, ctx.finish_line)))
+                .map(|path| (path, ctx.calculate_blockability(path)))
                 .collect();
 
             let stable_paths: Vec<_> = path_metrics
@@ -171,11 +218,9 @@ impl Bot for EnemyPathMaximizerBot {
                         return Move(*valid_step);
                     } else {
                         // jump to location with shortest path
-                        let navgraph = ctx.map.barricade_grid.get_navgraph();
                         let ratings = valid_moves.iter().map(|coord| {
                             (
-                                navgraph
-                                    .find_shortest_path(*coord, &ctx.finish_line)
+                                ctx.find_shortest_path(*coord, &ctx.finish_line)
                                     .map_or(0, |path| path.len()),
                                 coord,
                             )
@@ -191,7 +236,7 @@ impl Bot for EnemyPathMaximizerBot {
             } else {
                 let first_fork = Path::find_first_fork(&paths);
 
-                if first_fork.is_some_and(|fork| fork == coord) && ctx.inventory > 0 {
+                if first_fork.is_some_and(|fork| ctx.player_coord() == fork) && ctx.inventory > 0 {
                     // do not move as we would commit to the fork
                     // instead we must find a way out of this dilemma
                     // =>
