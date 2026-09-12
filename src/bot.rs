@@ -159,12 +159,30 @@ impl Bot for EnemyPathMaximizerBot {
                     // we are being blocked by the other player
                     // => find move along best_stable_path
                     let valid_moves = ctx.map.find_valid_moves(ctx.team);
-                    let valid_step = valid_moves
+                    if let Some(valid_step) = valid_moves
                         .iter()
                         .find(|valid_move| best_stable_path.contains(*valid_move))
-                        .expect("could not find valid step along best stable path which should be impossible, as the opponent cannot block a path");
+                    {
+                        // jump along best stable path if possible
+                        return Move(*valid_step);
+                    } else {
+                        // jump to location with shortest path
+                        let navgraph = ctx.map.barricade_grid.get_navgraph();
+                        let ratings = valid_moves.iter().map(|coord| {
+                            (
+                                navgraph
+                                    .find_shortest_path(*coord, &ctx.finish_line)
+                                    .map_or(0, |path| path.len()),
+                                coord,
+                            )
+                        });
 
-                    return Move(*valid_step);
+                        let (_, best_coord) = ratings
+                            .min_by(|(a, _), (b, _)| a.cmp(b))
+                            .expect("could not find move that yields the shortest path to finish");
+
+                        return Move(*best_coord);
+                    }
                 }
             } else {
                 let first_fork = path::find_first_fork(&paths);
